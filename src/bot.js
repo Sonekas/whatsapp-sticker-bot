@@ -6,8 +6,16 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import qrcode from 'qrcode';
+import NodeCache from 'node-cache';
 import { COMMAND, MAX_VIDEO_DURATION, AUTH_DIR } from './config.js';
 import { createStickerFromImage, createStickerFromVideo } from './utils/sticker.js';
+
+// Previne crash do processo no Railway por erros assíncronos não tratados na rede
+process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
+process.on('unhandledRejection', (reason) => console.error('Unhandled Rejection:', reason));
+
+// Cache em memória com limite para evitar memory leaks internos da biblioteca (Baileys)
+const msgRetryCounterCache = new NodeCache();
 
 // Log apenas de erros para manter terminal limpo e economizar recursos na nuvem
 const logger = pino({ level: 'error' });
@@ -24,7 +32,8 @@ async function startBot() {
         browser: ['Bot Fig', 'Chrome', '1.0.0'], // Identificação do bot
         syncFullHistory: false, // Essencial não baixar histórico antigo para economizar RAM
         markOnlineOnConnect: false, // Economiza requests para a API
-        generateHighQualityLinkPreviews: false // Evita uso extra de CPU processando URLs
+        generateHighQualityLinkPreviews: false, // Evita uso extra de CPU processando URLs
+        msgRetryCounterCache // Instância de cache para impedir vazamento contínuo de RAM
     });
 
     // Salva status da sessão automaticamente
@@ -35,13 +44,14 @@ async function startBot() {
         const { connection, lastDisconnect, qr } = update;
         
         if (qr) {
-            // Gera QR Code exclusivamente no terminal para leitura rápida na nuvem (Railway)
-            qrcode.toString(qr, { type: 'terminal', small: true }, (err, url) => {
+            // Gera QR Code como Data URL base64 para evitar bugs de caracteres no console do Railway
+            qrcode.toDataURL(qr, (err, url) => {
                 if (!err) {
                     console.log('\n==================================================================');
                     console.log('⚠️ LEITURA NECESSÁRIA PARA AUTENTICAÇÃO ⚠️');
-                    console.log('Se você fez deploy na nuvem (Railway), escaneie o código abaixo pelo celular:');
-                    console.log(url);
+                    console.log('Copie o gigantesco link gerado abaixo e cole na aba do navegador:');
+                    console.log('\n' + url + '\n');
+                    console.log('E escaneie a imagem com o seu WhatsApp!');
                     console.log('==================================================================\n');
                 }
             });
@@ -52,7 +62,8 @@ async function startBot() {
             console.log(`Conexão fechada. Tentando reconectar: ${shouldReconnect}`);
             
             if (shouldReconnect) {
-                startBot();
+                // Timer (backoff) simples para evitar loop infinito em caso de falha persistente
+                setTimeout(startBot, 5000);
             } else {
                 console.log('Você deslogou o Bot do WhatsApp. Remova a pasta auth/ e inicie novamente para scanear um novo QR Code.');
             }
@@ -91,10 +102,11 @@ async function startBot() {
             console.log(`[!] Processando imagem de ${remoteJid}...`);
             try {
                 const stream = await downloadContentFromMessage(msgToCheck.imageMessage, 'image');
-                let buffer = Buffer.from([]);
+                let chunks = [];
                 for await(const chunk of stream) {
-                    buffer = Buffer.concat([buffer, chunk]);
+                    chunks.push(chunk);
                 }
+                const buffer = Buffer.concat(chunks);
 
                 const stickerBuffer = await createStickerFromImage(buffer);
                 await sock.sendMessage(remoteJid, { sticker: stickerBuffer }, { quoted: msg });
@@ -119,10 +131,11 @@ async function startBot() {
 
             try {
                 const stream = await downloadContentFromMessage(videoMessage, 'video');
-                let buffer = Buffer.from([]);
+                let chunks = [];
                 for await(const chunk of stream) {
-                    buffer = Buffer.concat([buffer, chunk]);
+                    chunks.push(chunk);
                 }
+                const buffer = Buffer.concat(chunks);
 
                 const stickerBuffer = await createStickerFromVideo(buffer);
                 await sock.sendMessage(remoteJid, { sticker: stickerBuffer }, { quoted: msg });

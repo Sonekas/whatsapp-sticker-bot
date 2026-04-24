@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import makeWASocket, {
     useMultiFileAuthState,
     DisconnectReason,
@@ -7,6 +8,8 @@ import makeWASocket, {
 import pino from 'pino';
 import qrcode from 'qrcode';
 import NodeCache from 'node-cache';
+import axios from 'axios';
+import wol from 'wake_on_lan';
 import { COMMAND, MAX_VIDEO_DURATION, AUTH_DIR } from './config.js';
 import { createStickerFromImage, createStickerFromVideo } from './utils/sticker.js';
 
@@ -88,10 +91,53 @@ async function startBot() {
                      msg.message.imageMessage?.caption ||
                      msg.message.videoMessage?.caption || "";
         
-        // Se a mensagem não contiver EXATAMENTE "!fig", ignorar e parar processamento imediatamente
-        if (text.trim() !== COMMAND) return;
-
+        const commandText = text.trim();
         const remoteJid = msg.key.remoteJid;
+
+        // ---------------------------------------------------------
+        // COMANDOS RESTRITOS (PC)
+        // ---------------------------------------------------------
+        if (commandText === '!pc desligar' || commandText === '!pc ligar') {
+            // Adaptação para o Baileys (equivalente a msg.author || msg.from do whatsapp-web.js)
+            const sender = msg.key.participant || msg.key.remoteJid;
+            const senderNumber = sender ? sender.split('@')[0] : '';
+
+            // Verifica se é o dono (configurado no .env)
+            if (senderNumber !== process.env.OWNER) {
+                await sock.sendMessage(remoteJid, { text: '❌ Você não tem permissão para usar esse comando.' }, { quoted: msg });
+                return;
+            }
+
+            if (commandText === '!pc desligar') {
+                try {
+                    await axios.post(`http://${process.env.PC_IP}:3000/comando`, { cmd: 'desligar' });
+                    await sock.sendMessage(remoteJid, { text: 'Desligando o PC...' }, { quoted: msg });
+                } catch (error) {
+                    console.error('Erro ao desligar o PC:', error.message);
+                }
+                return;
+            }
+
+            if (commandText === '!pc ligar') {
+                try {
+                    wol.wake(process.env.PC_MAC, (error) => {
+                        if (error) {
+                            console.error('Erro no Wake-on-LAN:', error);
+                        }
+                    });
+                    await sock.sendMessage(remoteJid, { text: 'Ligando o PC...' }, { quoted: msg });
+                } catch (error) {
+                    console.error('Erro ao ligar o PC:', error.message);
+                }
+                return;
+            }
+        }
+
+        // ---------------------------------------------------------
+        // COMANDOS PÚBLICOS (!figu)
+        // ---------------------------------------------------------
+        // Se a mensagem não contiver EXATAMENTE o comando público, ignorar e parar processamento imediatamente
+        if (commandText !== COMMAND) return;
         
         // Verifica de onde puxar a mídia: da própria mensagem ou de uma menção/resposta
         const isReply = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;

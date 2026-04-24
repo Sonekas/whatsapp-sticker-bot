@@ -20,7 +20,12 @@ O bot foi arquitetado desde as primeiras linhas para ignorar mensagens inúteis 
    ```bash
    npm install
    ```
-3. Inicie conectando seu novo e reluzente server:
+3. Crie um arquivo `.env` na pasta base do projeto (use o `.env.example` como base) e defina as variáveis (caso queira usar as funções de controle do PC):
+   ```env
+   ADMIN_NUMBER=5511999999999  # Seu número com DDI e DDD sem o '+'
+   PC_MAC_ADDRESS=04:7C:16:4B:28:10
+   ```
+4. Inicie conectando seu novo e reluzente server:
    ```bash
    npm start
    ```
@@ -41,5 +46,11 @@ O arquivo `.gitignore` base que incluímos tem super poderes blindando a pasta `
 
 Tendo configurado sua engenhoca, você (o dono mestre do bote) ou seus amigos dos grupos de Zap afora com quem tem interação com o Bot, testarão ao vivo pra criar da seguinte maneira:
 
+### 🎨 Criação de Figurinhas (Público)
 - **Imagem 2D estática de sempre:** Atrele junto a foto na legenda exata do balãozinho ou responda com texto na foto enviada citando o robô: `!fig`
 - **Vídeos engraçados e GIFs malucos:** Tem a mesma forma suprema de reagir, cole e dispare ao post o mesmo título: `!fig` no chat da roda de amigos de preferência em 6s e que a força do figurinho te acompanhe nos combates digitais afora na terra da web!
+
+### 💻 Controle Remoto de PC (Restrito)
+Comandos exclusivos para o número de administrador definido no arquivo `.env` (em `ADMIN_NUMBER`):
+- **Ligar o PC:** Envie a mensagem `!pc ligar` para o bot. Ele disparará um pacote mágico *Wake-on-LAN* para o endereço MAC cadastrado.
+- **Desligar o PC:** Envie `!pc desligar` para o bot e ele vai acionar o desligamento da máquina onde o bot estiver rodando (ou conectado).
